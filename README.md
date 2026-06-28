@@ -54,7 +54,7 @@ Recommended deployment:
 1. Push this repository to GitHub.
 2. In Render, create a new Web Service from the GitHub repo.
 3. Set Root Directory to `server`.
-4. Set Build Command to `npm install`.
+4. Set Build Command to `npm install` or `npm run build`.
 5. Set Start Command to `npm start`.
 6. Add the backend environment variables below.
 7. Deploy and copy the Render backend URL.

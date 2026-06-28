@@ -18,12 +18,16 @@ const configuredOrigins = String(process.env.CORS_ORIGINS || "")
   .map((origin) => origin.trim())
   .filter(Boolean);
 const allowedOrigins = new Set([clientUrl, "http://localhost:5173", "http://127.0.0.1:5173", ...configuredOrigins]);
+const vercelPreviewPattern = /^https:\/\/[a-z0-9-]+(?:-[a-z0-9-]+)?\.vercel\.app$/i;
 
 app.use(helmet());
 app.use(
   cors({
     origin(origin, callback) {
       if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+      if (process.env.ALLOW_VERCEL_PREVIEWS === "true" && vercelPreviewPattern.test(origin)) {
+        return callback(null, true);
+      }
       return callback(new Error("Not allowed by CORS"));
     },
     credentials: true
