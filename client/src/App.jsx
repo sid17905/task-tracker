@@ -11,6 +11,7 @@ import {
   Plus,
   Search,
   Settings,
+  RefreshCw,
   UsersRound,
   Zap
 } from "lucide-react";
@@ -62,6 +63,7 @@ const getTaskFromResponse = (response) => response.task || response;
 const getEmailMessage = (emailStatus, fallback) => {
   if (!emailStatus || emailStatus.status === "not_needed") return fallback;
   if (emailStatus.status === "sent") return `${fallback}. Email sent to assignee.`;
+  if (emailStatus.status === "queued") return `${fallback}. Assignment email queued.`;
   if (emailStatus.status === "skipped") return `${fallback}. Email not sent: SMTP is not configured.`;
   if (emailStatus.status === "failed") return `${fallback}. Email failed: ${emailStatus.message}`;
   return fallback;
@@ -92,6 +94,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState(null);
   const [serverErrors, setServerErrors] = useState({});
+  const [commentText, setCommentText] = useState("");
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -132,8 +135,21 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return undefined;
-    const intervalId = window.setInterval(loadTasks, 15000);
+    const intervalId = window.setInterval(loadTasks, 5000);
     return () => window.clearInterval(intervalId);
+  }, [loadTasks, user]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    const refreshOnFocus = () => {
+      if (document.visibilityState === "visible") loadTasks();
+    };
+    window.addEventListener("focus", loadTasks);
+    document.addEventListener("visibilitychange", refreshOnFocus);
+    return () => {
+      window.removeEventListener("focus", loadTasks);
+      document.removeEventListener("visibilitychange", refreshOnFocus);
+    };
   }, [loadTasks, user]);
 
   const loadTeamMembers = useCallback(async () => {
@@ -221,6 +237,7 @@ export default function App() {
         setTasks((current) => [createdTask, ...current]);
         setSelectedTaskId(createdTask._id);
         showNotification(getEmailMessage(created.emailStatus, "Task created"));
+        await loadTasks();
       }
       closeComposer();
       return true;
@@ -249,6 +266,7 @@ export default function App() {
       setTasks((current) => current.map((item) => (item._id === updatedTask._id ? updatedTask : item)));
       setSelectedTaskId(updatedTask._id);
       showNotification("Task completed");
+      await loadTasks();
     } catch (error) {
       showNotification(error.message, "error");
     }
@@ -294,6 +312,15 @@ export default function App() {
     } catch (error) {
       showNotification(error.message, "error");
     }
+  };
+
+  const handleComment = () => {
+    if (!commentText.trim()) {
+      showNotification("Write a comment first", "error");
+      return;
+    }
+    setCommentText("");
+    showNotification("Comment noted locally");
   };
 
   const analytics = useMemo(() => {
@@ -389,7 +416,7 @@ export default function App() {
         </div>
 
         <div className="side-footer">
-          <button type="button">Help</button>
+          <button type="button" onClick={() => showNotification("Use Team to add co-worker emails, then Create Task to assign work.")}>Help</button>
           <button type="button" onClick={() => signOut(auth)}>
             <LogOut size={16} />
             Logout
@@ -407,10 +434,13 @@ export default function App() {
               placeholder="Search tasks, projects, or people..."
             />
           </label>
-          <button type="button" aria-label="Notifications">
+          <button type="button" aria-label="Notifications" onClick={() => showNotification("No unread notifications")}>
             <Bell size={18} />
           </button>
-          <button type="button" aria-label="Settings">
+          <button type="button" aria-label="Refresh tasks" onClick={loadTasks}>
+            <RefreshCw size={18} />
+          </button>
+          <button type="button" aria-label="Settings" onClick={() => setActiveView("team")}>
             <Settings size={18} />
           </button>
           <div className="avatar">{(user.displayName || user.email).slice(0, 2).toUpperCase()}</div>
@@ -544,8 +574,8 @@ export default function App() {
                     </div>
                     <div className="activity-box">
                       <div className="avatar small">{(user.displayName || user.email).slice(0, 2).toUpperCase()}</div>
-                      <input placeholder="Add a comment..." />
-                      <button type="button">Comment</button>
+                      <input value={commentText} onChange={(event) => setCommentText(event.target.value)} placeholder="Add a comment..." />
+                      <button type="button" onClick={handleComment}>Comment</button>
                     </div>
                   </>
                 ) : (

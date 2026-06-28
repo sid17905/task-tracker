@@ -78,6 +78,14 @@ const normalizeUpdatePayload = (body) => {
   return update;
 };
 
+const queueAssignmentEmail = (task) => {
+  sendTaskAssignedEmail(task)
+    .then((result) => {
+      if (result?.status === "sent") console.log(`Assignment email sent to ${task.assignedToEmail}`);
+    })
+    .catch((error) => console.error("Assignment email failed", error.message));
+};
+
 export const getTasks = async (req, res, next) => {
   try {
     const { sortBy = "createdAt", order = "desc" } = req.query;
@@ -110,12 +118,8 @@ export const createTask = async (req, res, next) => {
     const task = await Task.create(normalizeCreatePayload(req.body, req.user));
     let emailStatus = { status: "not_needed" };
     if (task.assignedToEmail !== req.user.email) {
-      try {
-        emailStatus = await sendTaskAssignedEmail(task);
-      } catch (error) {
-        emailStatus = { status: "failed", message: error.message };
-        console.error("Assignment email failed", error.message);
-      }
+      emailStatus = { status: "queued", message: "Assignment email is being sent in the background." };
+      queueAssignmentEmail(task);
     }
     res.status(201).json({ task, emailStatus });
   } catch (error) {
@@ -146,12 +150,8 @@ export const updateTask = async (req, res, next) => {
     if (!task) return res.status(404).json({ message: "Task not found" });
     let emailStatus = { status: "not_needed" };
     if (isCreator && task.assignedToEmail !== previousAssignee && task.assignedToEmail !== req.user.email) {
-      try {
-        emailStatus = await sendTaskAssignedEmail(task);
-      } catch (error) {
-        emailStatus = { status: "failed", message: error.message };
-        console.error("Assignment email failed", error.message);
-      }
+      emailStatus = { status: "queued", message: "Assignment email is being sent in the background." };
+      queueAssignmentEmail(task);
     }
     res.json({ task, emailStatus });
   } catch (error) {

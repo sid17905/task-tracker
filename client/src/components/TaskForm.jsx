@@ -38,6 +38,7 @@ const validate = (form) => {
 export default function TaskForm({ editingTask, onCancel, onSubmit, serverErrors, user, teamMembers }) {
   const [form, setForm] = useState(initialForm);
   const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (editingTask) {
@@ -67,6 +68,7 @@ export default function TaskForm({ editingTask, onCancel, onSubmit, serverErrors
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (submitting) return;
     const validationErrors = validate(form);
     setErrors(validationErrors);
     if (Object.keys(validationErrors).length > 0) return;
@@ -81,7 +83,9 @@ export default function TaskForm({ editingTask, onCancel, onSubmit, serverErrors
       dueDate: form.dueDate || undefined
     };
 
-    await onSubmit(payload);
+    setSubmitting(true);
+    const success = await onSubmit(payload);
+    if (!success) setSubmitting(false);
   };
 
   return (
@@ -91,7 +95,7 @@ export default function TaskForm({ editingTask, onCancel, onSubmit, serverErrors
           <p className="eyebrow">Task details</p>
           <h2>{editingTask ? "Edit task" : "Create task"}</h2>
         </div>
-        <button type="button" className="icon-button" onClick={onCancel} aria-label="Close task form">
+        <button type="button" className="icon-button" onClick={onCancel} aria-label="Close task form" disabled={submitting}>
           <X size={18} />
         </button>
       </div>
@@ -155,9 +159,9 @@ export default function TaskForm({ editingTask, onCancel, onSubmit, serverErrors
         </label>
       </div>
 
-      <button className="primary-button" type="submit">
+      <button className="primary-button" type="submit" disabled={submitting}>
         <Save size={18} aria-hidden="true" />
-        {editingTask ? "Save changes" : "Add task"}
+        {submitting ? "Saving..." : editingTask ? "Save changes" : "Add task"}
       </button>
     </form>
   );
