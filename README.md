@@ -42,17 +42,51 @@ Example: `GET /api/tasks?status=pending&priority=high&sortBy=dueDate&order=asc&s
 
 ## Deployment Notes
 
-Deploy the backend to Render/Railway/Fly.io and the frontend to Vercel/Netlify.
+Recommended deployment:
+
+- Backend: Render Web Service
+- Frontend: Vercel
+- Database: MongoDB Atlas
+- Auth: Firebase Authentication
+
+### Backend on Render
+
+1. Push this repository to GitHub.
+2. In Render, create a new Web Service from the GitHub repo.
+3. Set Root Directory to `server`.
+4. Set Build Command to `npm install`.
+5. Set Start Command to `npm start`.
+6. Add the backend environment variables below.
+7. Deploy and copy the Render backend URL.
 
 Backend env:
 
 ```env
 MONGODB_URI=your_mongodb_atlas_uri
-CLIENT_URL=https://your-frontend-domain.com
-CORS_ORIGINS=https://your-frontend-domain.com
-APP_URL=https://your-frontend-domain.com
-PORT=5000
+MONGODB_DB_NAME=task_tracker
+CLIENT_URL=https://your-vercel-app.vercel.app
+CORS_ORIGINS=https://your-vercel-app.vercel.app
+APP_URL=https://your-vercel-app.vercel.app
+NODE_ENV=production
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your_email@gmail.com
+SMTP_PASS=your_google_app_password
+EMAIL_FROM=TaskPulse <your_email@gmail.com>
 ```
+
+### Frontend on Vercel
+
+1. In Vercel, import the GitHub repo.
+2. Set Framework Preset to Vite.
+3. Set Root Directory to `client`.
+4. Set Build Command to `npm run build`.
+5. Set Output Directory to `dist`.
+6. Add the frontend environment variables below.
+7. Deploy.
+8. Copy the Vercel URL and add it to Render as `CLIENT_URL`, `CORS_ORIGINS`, and `APP_URL`.
+9. Add the Vercel domain in Firebase Authentication authorized domains.
 
 Frontend env:
 
@@ -65,15 +99,4 @@ VITE_FIREBASE_STORAGE_BUCKET=your_project.firebasestorage.app
 VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 VITE_FIREBASE_APP_ID=your_app_id
 VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id
-```
-
-Email notifications are optional. Add SMTP values to the backend environment to send an email whenever a task is assigned to another user:
-
-```env
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=your_email@gmail.com
-SMTP_PASS=your_app_password
-EMAIL_FROM=TaskPulse <your_email@gmail.com>
 ```

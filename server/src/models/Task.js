@@ -70,6 +70,9 @@ const taskSchema = new mongoose.Schema(
         },
         message: "Due date cannot be in the past"
       }
+    },
+    completedAt: {
+      type: Date
     }
   },
   { timestamps: true }

@@ -57,6 +57,27 @@ const isUpcoming = (date) => {
   return value > today;
 };
 
+const getTaskFromResponse = (response) => response.task || response;
+
+const getEmailMessage = (emailStatus, fallback) => {
+  if (!emailStatus || emailStatus.status === "not_needed") return fallback;
+  if (emailStatus.status === "sent") return `${fallback}. Email sent to assignee.`;
+  if (emailStatus.status === "skipped") return `${fallback}. Email not sent: SMTP is not configured.`;
+  if (emailStatus.status === "failed") return `${fallback}. Email failed: ${emailStatus.message}`;
+  return fallback;
+};
+
+const getStartOfDay = (date) => {
+  const value = new Date(date);
+  value.setHours(0, 0, 0, 0);
+  return value;
+};
+
+const getDayKey = (date) => getStartOfDay(date).toISOString().slice(0, 10);
+
+const formatShortDay = (date) =>
+  new Intl.DateTimeFormat("en", { weekday: "short" }).format(date);
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
@@ -108,6 +129,12 @@ export default function App() {
   useEffect(() => {
     loadTasks();
   }, [loadTasks]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    const intervalId = window.setInterval(loadTasks, 15000);
+    return () => window.clearInterval(intervalId);
+  }, [loadTasks, user]);
 
   const loadTeamMembers = useCallback(async () => {
     if (!user) return;
@@ -183,15 +210,17 @@ export default function App() {
       setServerErrors({});
       if (editingTask) {
         const updated = await updateTask(user, editingTask._id, payload);
-        setTasks((current) => current.map((task) => (task._id === updated._id ? updated : task)));
-        setSelectedTaskId(updated._id);
-        showNotification("Task updated");
+        const updatedTask = getTaskFromResponse(updated);
+        setTasks((current) => current.map((task) => (task._id === updatedTask._id ? updatedTask : task)));
+        setSelectedTaskId(updatedTask._id);
+        showNotification(getEmailMessage(updated.emailStatus, "Task updated"));
         await loadTasks();
       } else {
         const created = await createTask(user, payload);
-        setTasks((current) => [created, ...current]);
-        setSelectedTaskId(created._id);
-        showNotification(created.assignedToEmail === user.email ? "Task created" : "Task created and email notification queued");
+        const createdTask = getTaskFromResponse(created);
+        setTasks((current) => [createdTask, ...current]);
+        setSelectedTaskId(createdTask._id);
+        showNotification(getEmailMessage(created.emailStatus, "Task created"));
       }
       closeComposer();
       return true;
@@ -216,8 +245,9 @@ export default function App() {
   const handleQuickComplete = async (task) => {
     try {
       const updated = await updateTask(user, task._id, { ...task, status: "completed" });
-      setTasks((current) => current.map((item) => (item._id === updated._id ? updated : item)));
-      setSelectedTaskId(updated._id);
+      const updatedTask = getTaskFromResponse(updated);
+      setTasks((current) => current.map((item) => (item._id === updatedTask._id ? updatedTask : item)));
+      setSelectedTaskId(updatedTask._id);
       showNotification("Task completed");
     } catch (error) {
       showNotification(error.message, "error");
@@ -265,6 +295,44 @@ export default function App() {
       showNotification(error.message, "error");
     }
   };
+
+  const analytics = useMemo(() => {
+    const userEmail = user?.email || "";
+    const today = getStartOfDay(new Date());
+    const days = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(today);
+      date.setDate(today.getDate() - (6 - index));
+      return {
+        key: getDayKey(date),
+        label: formatShortDay(date),
+        count: 0
+      };
+    });
+
+    const dayMap = new Map(days.map((day) => [day.key, day]));
+    tasks.forEach((task) => {
+      if (task.status !== "completed") return;
+      const completedDate = task.completedAt || task.updatedAt;
+      if (!completedDate) return;
+      const key = getDayKey(completedDate);
+      const day = dayMap.get(key);
+      if (day) day.count += 1;
+    });
+
+    const assignedToMe = tasks.filter((task) => task.assignedToEmail === userEmail).length;
+    const assignedByMe = tasks.filter((task) => task.createdByEmail === userEmail).length;
+    const overdue = tasks.filter((task) => task.status !== "completed" && task.dueDate && new Date(task.dueDate) < today).length;
+    const maxCount = Math.max(1, ...days.map((day) => day.count));
+
+    return {
+      days,
+      maxCount,
+      assignedToMe,
+      assignedByMe,
+      overdue,
+      completionRate: stats.total ? Math.round((stats.done / stats.total) * 100) : 0
+    };
+  }, [stats.done, stats.total, tasks, user?.email]);
 
   if (!authReady) {
     return <main className="auth-shell"><div className="empty-state">Loading TaskPulse...</div></main>;
@@ -354,20 +422,38 @@ export default function App() {
           <section className="analytics-view">
             <p className="eyebrow">Analytics</p>
             <h1>Productivity Analytics</h1>
-            <p className="muted">Real-time insights into your workspace performance.</p>
+            <p className="muted">Live insights generated from your MongoDB task records.</p>
+            <div className="analytics-grid">
+              <article>
+                <span>Completion Rate</span>
+                <strong>{analytics.completionRate}%</strong>
+              </article>
+              <article>
+                <span>Assigned To Me</span>
+                <strong>{analytics.assignedToMe}</strong>
+              </article>
+              <article>
+                <span>Assigned By Me</span>
+                <strong>{analytics.assignedByMe}</strong>
+              </article>
+              <article>
+                <span>Overdue</span>
+                <strong>{analytics.overdue}</strong>
+              </article>
+            </div>
             <div className="chart-card">
               <div>
                 <strong>7-Day Productivity Trend</strong>
-                <span>Tasks completed over the last week</span>
+                <span>Completed tasks by day, updated as task statuses change</span>
               </div>
               <div className="fake-chart">
-                <i style={{ height: "38%" }} />
-                <i style={{ height: "54%" }} />
-                <i style={{ height: "46%" }} />
-                <i style={{ height: "72%" }} />
-                <i style={{ height: "60%" }} />
-                <i style={{ height: "82%" }} />
-                <i style={{ height: "68%" }} />
+                {analytics.days.map((day) => (
+                  <div className="chart-bar" key={day.key}>
+                    <i style={{ height: `${Math.max(8, (day.count / analytics.maxCount) * 100)}%` }} />
+                    <strong>{day.count}</strong>
+                    <span>{day.label}</span>
+                  </div>
+                ))}
               </div>
             </div>
           </section>

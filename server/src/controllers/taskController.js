@@ -45,14 +45,17 @@ const normalizeCreatePayload = (body, user) => {
   const assignedToEmail = String(body.assignedToEmail || user.email).trim().toLowerCase();
   const assignedTo = String(body.assignedTo || assignedToEmail).trim();
 
-  return {
+  const payload = {
     ...body,
     createdBy: user.name,
     createdByEmail: user.email,
     assignedTo,
     assignedToEmail,
-    project: String(body.project || "Personal").trim() || "Personal"
+    project: String(body.project || "Personal").trim() || "Personal",
+    completedAt: body.status === "completed" ? new Date() : undefined
   };
+
+  return payload;
 };
 
 const normalizeUpdatePayload = (body) => {
@@ -67,6 +70,9 @@ const normalizeUpdatePayload = (body) => {
     assignedTo: String(body.assignedTo || assignedToEmail).trim(),
     assignedToEmail
   };
+
+  if (body.status === "completed") update.completedAt = new Date();
+  if (body.status && body.status !== "completed") update.completedAt = null;
 
   Object.keys(update).forEach((key) => update[key] === undefined && delete update[key]);
   return update;
@@ -102,10 +108,16 @@ export const getTaskById = async (req, res, next) => {
 export const createTask = async (req, res, next) => {
   try {
     const task = await Task.create(normalizeCreatePayload(req.body, req.user));
+    let emailStatus = { status: "not_needed" };
     if (task.assignedToEmail !== req.user.email) {
-      sendTaskAssignedEmail(task).catch((error) => console.error("Assignment email failed", error.message));
+      try {
+        emailStatus = await sendTaskAssignedEmail(task);
+      } catch (error) {
+        emailStatus = { status: "failed", message: error.message };
+        console.error("Assignment email failed", error.message);
+      }
     }
-    res.status(201).json(task);
+    res.status(201).json({ task, emailStatus });
   } catch (error) {
     next(error);
   }
@@ -122,6 +134,8 @@ export const updateTask = async (req, res, next) => {
 
     const isCreator = existingTask.createdByEmail === req.user.email;
     const update = isCreator ? normalizeUpdatePayload(req.body) : { status: req.body.status };
+    if (!isCreator && req.body.status === "completed") update.completedAt = new Date();
+    if (!isCreator && req.body.status && req.body.status !== "completed") update.completedAt = null;
 
     if (!isCreator && !req.body.status) {
       return res.status(403).json({ message: "Only the creator can edit task details" });
@@ -130,10 +144,16 @@ export const updateTask = async (req, res, next) => {
     const previousAssignee = existingTask.assignedToEmail;
     const task = await Task.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
     if (!task) return res.status(404).json({ message: "Task not found" });
+    let emailStatus = { status: "not_needed" };
     if (isCreator && task.assignedToEmail !== previousAssignee && task.assignedToEmail !== req.user.email) {
-      sendTaskAssignedEmail(task).catch((error) => console.error("Assignment email failed", error.message));
+      try {
+        emailStatus = await sendTaskAssignedEmail(task);
+      } catch (error) {
+        emailStatus = { status: "failed", message: error.message };
+        console.error("Assignment email failed", error.message);
+      }
     }
-    res.json(task);
+    res.json({ task, emailStatus });
   } catch (error) {
     next(error);
   }

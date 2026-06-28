@@ -15,14 +15,15 @@ const getTransporter = () =>
 
 export const sendTaskAssignedEmail = async (task) => {
   if (!isEmailEnabled()) {
-    console.log(`Email skipped: configure SMTP env vars to notify ${task.assignedToEmail}`);
-    return;
+    const message = `Email skipped: configure SMTP env vars to notify ${task.assignedToEmail}`;
+    console.log(message);
+    return { status: "skipped", message };
   }
 
   const appUrl = process.env.APP_URL || process.env.CLIENT_URL || "http://localhost:5173";
   const from = process.env.EMAIL_FROM || process.env.SMTP_USER;
 
-  await getTransporter().sendMail({
+  const info = await getTransporter().sendMail({
     from,
     to: task.assignedToEmail,
     subject: `New task assigned: ${task.title}`,
@@ -53,4 +54,6 @@ export const sendTaskAssignedEmail = async (task) => {
       </div>
     `
   });
+
+  return { status: "sent", messageId: info.messageId };
 };
